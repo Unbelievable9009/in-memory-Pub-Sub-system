@@ -203,25 +203,56 @@ Use a WebSocket client (e.g., JavaScript in a browser, `wscat`, Python `websocke
 
 ## Sequence Diagram
 
-The following diagram illustrates a typical subscribe/publish flow:
+The following diagram illustrates a more detailed WebSocket flow including subscribe, publish, fan-out, unsubscribe, and ping/pong:
 
 ```mermaid
 sequenceDiagram
-    title Pub/Sub Flow Example
-    participant Client A as Subscriber
-    participant Client B as Publisher
+    title Detailed Pub/Sub WebSocket Flow
+
+    participant Sub1 as Subscriber 1
+    participant Sub2 as Subscriber 2
+    participant Pub as Publisher
     participant Server
 
-    Client A->>+Server: WebSocket Connect /ws
-    Server-->>-Client A: Connection established
-    Client A->>Server: {"type":"subscribe", "topic":"orders", ...}
-    Server->>Client A: {"type":"ack", "status":"ok", ...}
+    Note over Sub1,Server: Subscriber 1 connects
+    Sub1->>+Server: WebSocket Connect /ws
+    Server-->>-Sub1: Connection established
 
-    Client B->>+Server: WebSocket Connect /ws
-    Server-->>-Client B: Connection established
-    Client B->>Server: {"type":"publish", "topic":"orders", "message":{...}, ...}
-    Server->>Client B: {"type":"ack", "status":"ok", ...}
-    Server->>Client A: {"type":"event", "topic":"orders", "message":{...}, ...}
+    Note over Sub2,Server: Subscriber 2 connects
+    Sub2->>+Server: WebSocket Connect /ws
+    Server-->>-Sub2: Connection established
+
+    Note over Pub,Server: Publisher connects
+    Pub->>+Server: WebSocket Connect /ws
+    Server-->>-Pub: Connection established
+
+    Note over Sub1,Server: Sub1 subscribes to 'topic-A'
+    Sub1->>Server: {"type":"subscribe", "topic":"topic-A", "client_id":"sub1"}
+    Server->>Sub1: {"type":"ack", "topic":"topic-A", "status":"ok"}
+
+    Note over Sub2,Server: Sub2 subscribes to 'topic-A'
+    Sub2->>Server: {"type":"subscribe", "topic":"topic-A", "client_id":"sub2"}
+    Server->>Sub2: {"type":"ack", "topic":"topic-A", "status":"ok"}
+
+    Note over Pub,Server: Publisher sends message M1 to 'topic-A'
+    Pub->>Server: {"type":"publish", "topic":"topic-A", "message":{"id":"msg1",...}}
+    Server->>Pub: {"type":"ack", "topic":"topic-A", "status":"ok"}
+    Server->>Sub1: {"type":"event", "topic":"topic-A", "message":{"id":"msg1",...}}
+    Server->>Sub2: {"type":"event", "topic":"topic-A", "message":{"id":"msg1",...}}
+
+    Note over Sub1,Server: Sub1 unsubscribes from 'topic-A'
+    Sub1->>Server: {"type":"unsubscribe", "topic":"topic-A", "client_id":"sub1"}
+    Server->>Sub1: {"type":"ack", "topic":"topic-A", "status":"ok"}
+
+    Note over Pub,Server: Publisher sends message M2 to 'topic-A'
+    Pub->>Server: {"type":"publish", "topic":"topic-A", "message":{"id":"msg2",...}}
+    Server->>Pub: {"type":"ack", "topic":"topic-A", "status":"ok"}
+    Server->>Sub2: {"type":"event", "topic":"topic-A", "message":{"id":"msg2",...}}
+    Note over Server: Server does not send M2 to Sub1
+
+    Note over Sub1,Server: Ping/Pong
+    Sub1->>Server: {"type":"ping", ...}
+    Server->>Sub1: {"type":"pong", ...}
 ```
 
 ## Testing
