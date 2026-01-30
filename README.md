@@ -83,6 +83,8 @@ This is a simplified in-memory Publish/Subscribe system implemented in Python us
 
 Use a WebSocket client (e.g., JavaScript in a browser, `wscat`, Python `websocket-client`) to interact. Messages are JSON.
 
+#### Client -> Server Messages
+
 *   **Subscribe:**
     ```json
     {
@@ -129,4 +131,103 @@ Use a WebSocket client (e.g., JavaScript in a browser, `wscat`, Python `websocke
     }
     ```
 
-**Server -> Client Message Examples:** See the project description for `ack`, `event`, `error`, `pong`, and `info` message formats.
+#### Server -> Client Messages
+
+*   **Ack:** Confirms `subscribe`, `unsubscribe`, or `publish`.
+    ```json
+    {
+      "type": "ack",
+      "request_id": "sub-123",
+      "topic": "orders",
+      "status": "ok",
+      "ts": "2025-08-25T10:00:00Z"
+    }
+    ```
+
+*   **Event:** A message delivered to a subscriber.
+    ```json
+    {
+      "type": "event",
+      "topic": "orders",
+      "message": {
+        "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+        "payload": {
+          "order_id": "ORD-789",
+          "amount": "12.34",
+          "currency": "USD"
+        }
+      },
+      "ts": "2025-08-25T10:01:00Z"
+    }
+    ```
+
+*   **Error:** Reports an issue with a request or connection.
+    ```json
+    {
+      "type": "error",
+      "request_id": "req-xyz",
+      "topic": "invalid-topic",
+      "error": {
+        "code": "TOPIC_NOT_FOUND",
+        "message": "Topic 'invalid-topic' not found"
+      },
+      "ts": "2025-08-25T10:02:00Z"
+    }
+    ```
+
+*   **Pong:** Response to a client `ping`.
+    ```json
+    {
+      "type": "pong",
+      "request_id": "ping-abc",
+      "ts": "2025-08-25T10:03:00Z"
+    }
+    ```
+
+*   **Info:** Server-initiated message (e.g., heartbeat or topic deletion).
+    ```json
+    {
+      "type": "info",
+      "msg": "ping",
+      "ts": "2025-08-25T10:04:00Z"
+    }
+    ```
+    ```json
+    {
+      "type": "info",
+      "topic": "orders",
+      "msg": "topic_deleted",
+      "ts": "2025-08-25T10:05:00Z"
+    }
+    ```
+
+## Sequence Diagram
+
+The following diagram illustrates a typical subscribe/publish flow:
+
+```mermaid
+sequenceDiagram
+    title Pub/Sub Flow Example
+    participant Client A as Subscriber
+    participant Client B as Publisher
+    participant Server
+
+    Client A->>+Server: WebSocket Connect /ws
+    Server-->>-Client A: Connection established
+    Client A->>Server: {"type":"subscribe", "topic":"orders", ...}
+    Server->>Client A: {"type":"ack", "status":"ok", ...}
+
+    Client B->>+Server: WebSocket Connect /ws
+    Server-->>-Client B: Connection established
+    Client B->>Server: {"type":"publish", "topic":"orders", "message":{...}, ...}
+    Server->>Client B: {"type":"ack", "status":"ok", ...}
+    Server->>Client A: {"type":"event", "topic":"orders", "message":{...}, ...}
+```
+
+## Testing
+
+The service includes unit and integration tests written with `pytest`. To run the tests, ensure you have installed the dependencies from `requirements.txt`, then run:
+
+```bash
+pytest
+```
