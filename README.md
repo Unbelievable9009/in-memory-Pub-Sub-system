@@ -22,6 +22,18 @@ This is a simplified in-memory Publish/Subscribe system implemented in Python us
 *   **Message Replay:** Supports replaying the last `n` messages to new subscribers via the `last_n` parameter in the subscribe message. Up to 100 messages are stored per topic.
 *   **Heartbeats:** Server sends periodic "ping" info messages to connected WebSocket clients.
 
+## High-Level Design
+
+The system is built around a FastAPI application that manages state in memory using Python's `asyncio` capabilities for concurrency.
+
+*   **API Layer**: FastAPI handles incoming HTTP requests for REST endpoints and manages WebSocket connections via the `/ws` endpoint.
+*   **State Management**:
+    *   A global `dict` protected by an `asyncio.Lock` stores all `Topic` instances.
+    *   Each `Topic` object is responsible for its own set of subscribers, its message history (`deque`), and message fan-out logic.
+*   **Concurrency**: `asyncio.Lock` is used within each `Topic` and around the global topic dictionary to prevent race conditions when multiple clients publish or subscribe concurrently.
+*   **Fan-Out and Backpressure**: When a message is published to a topic, it is added to an `asyncio.Queue` for each subscriber. A separate asynchronous task per subscriber reads from this queue and sends messages over the WebSocket. If a subscriber's queue reaches its maximum size (`MAX_SUBSCRIBER_QUEUE`), the oldest message is dropped to prevent memory issues and a `SLOW_CONSUMER` error is issued.
+*   **Message Replay**: Each topic maintains a fixed-size `deque` (`MAX_HISTORY`) of recent messages, allowing new subscribers to request the `last_n` messages upon subscription.
+
 ## Assumptions & Design Choices
 
 *   **Backpressure Policy:** Each subscriber has a bounded queue of 50 messages. If the queue is full when a new message arrives:
