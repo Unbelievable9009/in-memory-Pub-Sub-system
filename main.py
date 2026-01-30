@@ -366,7 +366,7 @@ async def websocket_endpoint(websocket: WebSocket):
           event = {
               "type": "event",
               "topic": topic_name,
-              "message": msg.message.dict(),
+              "message": msg.message.model_dump(),
               "ts": datetime.now(timezone.utc).isoformat(),
           }
           await topic.publish_message(event)
