@@ -35,9 +35,13 @@ This is a simplified in-memory Publish/Subscribe system implemented in Python us
 
 ## Prerequisites
 
-*   Docker
+*   **Docker:** For running the application in a container.
+*   **Python 3.11+:** For running the application locally or running tests.
+*   **Node.js & npm:** Optional, for installing `wscat` to easily test WebSockets manually.
 
-## Running with Docker
+## Running the Application
+
+### Option 1: Using Docker (Recommended)
 
 1.  **Build the Docker Image:**
     ```bash
@@ -48,7 +52,75 @@ This is a simplified in-memory Publish/Subscribe system implemented in Python us
     ```bash
     docker run -d -p 8000:8000 --name pubsub-app inmemory-pubsub
     ```
-    The application will be accessible on `http://localhost:8000`.
+    The application will be accessible at `http://localhost:8000`.
+
+### Option 2: Running Locally with Python
+
+1.  **Create and activate a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # On Windows, use: venv\Scripts\activate
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Run the server with Uvicorn:**
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+    The application will be accessible at `http://localhost:8000`. The `--reload` flag enables hot-reloading for development.
+
+## How to Test
+
+### 1. Automated Tests
+
+The service includes unit and integration tests written with `pytest`. To run them:
+
+1.  Ensure dependencies are installed (`pip install -r requirements.txt`).
+2.  Run pytest:
+    ```bash
+    pytest
+    ```
+
+### 2. Manual End-to-End Test
+
+You can test the system manually using `curl` for REST endpoints and `wscat` for WebSockets.
+
+1.  **Install `wscat` (if you don't have it):**
+    ```bash
+    npm install -g wscat
+    ```
+
+2.  **Start the application** using either Docker or Python as described above.
+
+3.  **Create a topic via REST:**
+    ```bash
+    curl -X POST http://localhost:8000/topics -H "Content-Type: application/json" -d '{"name": "sensor-data"}'
+    ```
+
+4.  **In Terminal 1, connect a subscriber:**
+    ```bash
+    wscat -c ws://localhost:8000/ws
+    ```
+    Once connected (`>` prompt appears), paste the following message and press Enter:
+    ```json
+    {"type": "subscribe", "topic": "sensor-data", "client_id": "client-001", "request_id":"sub1"}
+    ```
+    You should receive an `ack` message.
+
+5.  **In Terminal 2, connect and publish a message:**
+    ```bash
+    wscat -c ws://localhost:8000/ws
+    ```
+    Once connected, paste the following message and press Enter:
+    ```json
+    {"type": "publish", "topic": "sensor-data", "message": {"id": "550e8400-e29b-41d4-a716-446655440000", "payload": {"temp": 22.5}}, "request_id":"pub1"}
+    ```
+
+6.  **Verify:** You should receive an `ack` in Terminal 2, and an `event` message containing `{"temp": 22.5}` should appear in Terminal 1.
 
 ## API Usage
 
@@ -253,12 +325,4 @@ sequenceDiagram
     Note over Sub1,Server: Ping/Pong
     Sub1->>Server: {"type":"ping", ...}
     Server->>Sub1: {"type":"pong", ...}
-```
-
-## Testing
-
-The service includes unit and integration tests written with `pytest`. To run the tests, ensure you have installed the dependencies from `requirements.txt`, then run:
-
-```bash
-pytest
 ```
