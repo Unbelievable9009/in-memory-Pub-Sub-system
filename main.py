@@ -1,13 +1,12 @@
 import asyncio
 from collections import deque
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 import uuid
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
-
-app = FastAPI()
 
 MAX_HISTORY = 100  # Max messages to keep per topic for replay
 MAX_SUBSCRIBER_QUEUE = 50  # Max messages per subscriber queue for backpressure
@@ -22,7 +21,7 @@ class MessagePayload(BaseModel):
 
 
 class Message(BaseModel):
-  id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+  id: str
   payload: Dict[str, Any]
 
 
@@ -212,6 +211,59 @@ async def delete_topic(topic_name: str):
           queue.get_nowait()
           queue.task_done()
       topic.subscriber_queues.clear()
+
+
+# --- Heartbeat Task ---
+async def heartbeat():
+  while True:
+    try:
+      await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+      async with topics_lock:
+        all_subscribers = set()
+        for topic in topics.values():
+          async with topic.lock:
+            all_subscribers.update(topic.subscribers)
+
+      info_msg = {
+          "type": "info",
+          "msg": "ping",
+          "ts": datetime.now(timezone.utc).isoformat(),
+      }
+      for ws in list(all_subscribers):  # Iterate over a copy
+        try:
+          await asyncio.wait_for(ws.send_json(info_msg), timeout=1.0)
+        except WebSocketDisconnect:
+          # The main loop will handle removal
+          pass
+        except asyncio.TimeoutError:
+          print("Heartbeat send timeout")
+        except Exception as e:
+          print(f"Error sending heartbeat: {e}")
+    except asyncio.CancelledError:
+      print("Heartbeat task cancelled.")
+      break
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+  # Startup
+  print("Starting up...")
+  heartbeat_task = asyncio.create_task(heartbeat())
+  yield
+  # Shutdown
+  print("Shutting down...")
+  heartbeat_task.cancel()
+  try:
+    await heartbeat_task
+  except asyncio.CancelledError:
+    pass
+  async with topics_lock:
+    for topic_name in list(topics.keys()):
+      await delete_topic(topic_name)
+  print("Shutdown complete.")
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # --- WebSocket Endpoint ---
@@ -438,47 +490,6 @@ async def http_stats():
   async with topics_lock:
     stats_data = {name: topic.get_stats() for name, topic in topics.items()}
   return {"topics": stats_data}
-
-
-# --- Heartbeat Task ---
-async def heartbeat():
-  while True:
-    await asyncio.sleep(30)  # Send heartbeat every 30 seconds
-    async with topics_lock:
-      all_subscribers = set()
-      for topic in topics.values():
-        async with topic.lock:
-          all_subscribers.update(topic.subscribers)
-
-    info_msg = {
-        "type": "info",
-        "msg": "ping",
-        "ts": datetime.now(timezone.utc).isoformat(),
-    }
-    for ws in list(all_subscribers):  # Iterate over a copy
-      try:
-        await asyncio.wait_for(ws.send_json(info_msg), timeout=1.0)
-      except WebSocketDisconnect:
-        # The main loop will handle removal
-        pass
-      except asyncio.TimeoutError:
-        print("Heartbeat send timeout")
-      except Exception as e:
-        print(f"Error sending heartbeat: {e}")
-
-
-@app.on_event("startup")
-async def startup_event():
-  asyncio.create_task(heartbeat())
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-  print("Shutting down...")
-  async with topics_lock:
-    for topic_name in list(topics.keys()):
-      await delete_topic(topic_name)
-  print("Shutdown complete.")
 
 
 if __name__ == "__main__":
