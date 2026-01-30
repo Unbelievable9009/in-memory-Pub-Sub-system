@@ -85,10 +85,11 @@ graph TD
     classDef client fill:#D1E7DD,stroke:#0F5132,stroke-width:1px;
     classDef endpoint fill:#CFE2FF,stroke:#084298,stroke-width:1px;
     classDef topic fill:#F8D7DA,stroke:#842029,stroke-width:1px;
+    classDef core fill:#FFF3CD,stroke:#664d03,stroke-width:1px;
     class A,P,S client;
     class F_REST,F_WS endpoint;
     class T1,T2 topic;
-    class TM,AS,Q1,Qn fill:#FFF3CD,stroke:#664d03;
+    class TM,AS,Q1,Qn core;
 ```
 
 ## Assumptions & Design Choices
